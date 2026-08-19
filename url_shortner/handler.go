@@ -1,6 +1,8 @@
 package urlshortner
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 
 	"gopkg.in/yaml.v2"
@@ -18,9 +20,9 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 	}
 }
 
-func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
+func DataHandler(data []byte, fallback http.Handler) (http.HandlerFunc, error) {
 
-	pathUrls, err := parseYaml(yml)
+	pathUrls, err := parseData(data)
 	if err != nil {
 		return nil, err
 	}
@@ -32,15 +34,25 @@ func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
 }
 
 type pathUrl struct {
-	Path string `yaml:"path"`
-	URL  string `yaml:"url"`
+	Path string `yaml:"path" json:"path"`
+	URL  string `yaml:"url" json:"url"`
 }
 
-func parseYaml(data []byte) ([]pathUrl, error) {
+func parseData(data []byte) ([]pathUrl, error) {
 	var pathUrls []pathUrl
-	err := yaml.Unmarshal(data, &pathUrls)
-	if err != nil {
-		return nil, err
+	switch {
+	case json.Valid(data):
+		err := json.Unmarshal(data, &pathUrls)
+		if err != nil {
+			return nil, err
+		}
+	case validYAML(data):
+		err := yaml.Unmarshal(data, &pathUrls)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("Unsupported or invalid data format: expected JSON or YAML")
 	}
 	return pathUrls, nil
 }
@@ -51,4 +63,9 @@ func makeMap(pathUrls []pathUrl) map[string]string {
 		pathsToUrls[pu.Path] = pu.URL
 	}
 	return pathsToUrls
+}
+
+func validYAML(data []byte) bool {
+	var out yaml.MapSlice
+	return yaml.Unmarshal(data, &out) == nil
 }
